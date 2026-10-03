@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sentiment Reader — The Wonderful Wizard of Oz</title>
+<style>
+  :root {
+    --page-bg: #faf6ec;
+    --ink: #2b2620;
+    --accent: #8a6d3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    background: #3a3530;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px 12px;
+  }
+  .device {
+    width: 100%;
+    max-width: 640px;
+    background: var(--page-bg);
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 640px;
+  }
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #e2d9c3;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  header .title { font-weight: bold; }
+  .page-area {
+    flex: 1;
+    padding: 28px 40px 8px;
+    color: var(--ink);
+    font-size: 19px;
+    line-height: 1.7;
+    position: relative;
+  }
+  .chapter-heading {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .char-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+    min-height: 22px;
+  }
+  .char-badge {
+    font-family: Georgia, serif;
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    letter-spacing: 0.3px;
+  }
+  .char-badge.mood-positive { background: #dcf3e1; color: #2f6e3f; }
+  .char-badge.mood-negative { background: #fbdede; color: #8a2f2f; }
+  .char-badge.mood-neutral  { background: #eae6db; color: #6b6252; }
+
+  footer {
+    padding: 14px 24px;
+    border-top: 1px solid #e2d9c3;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: #6b6252;
+  }
+  .footer-left { display: flex; flex-direction: column; gap: 2px; }
+  .nav-buttons button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 18px;
+    border: 1px solid var(--accent);
+    background: var(--page-bg);
+    color: var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 8px;
+  }
+  .nav-buttons button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .nav-buttons button:hover:not(:disabled) { background: #efe6cf; }
+
+  /* Inline emotion display */
+  .emotion-display {
+    margin-top: 14px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: #eae6db;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.25s ease;
+  }
+  .emotion-display .emotion-message { font-size: 14px; font-weight: bold; }
+  .emotion-display .emotion-meta {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8a8272;
+    white-space: nowrap;
+  }
+
+  .emotion-display.joy           { background: #fff6df; }
+  .emotion-display.love          { background: #ffeef2; }
+  .emotion-display.surprise      { background: #fff3e6; }
+  .emotion-display.anger         { background: #fdeaea; }
+  .emotion-display.fear          { background: #f1eaf9; }
+  .emotion-display.sadness       { background: #e8f3fd; }
+  .emotion-display.disgust       { background: #eef5e3; }
+  .emotion-display.embarrassment { background: #fdeaf1; }
+  .emotion-display.curiosity     { background: #e3f7f9; }
+
+  /* Sentiment strip */
+  .sentiment-strip {
+    padding: 6px 24px 14px;
+    background: var(--page-bg);
+  }
+  .sentiment-strip canvas { width: 100%; height: 44px; display: block; }
+  .sentiment-strip .label { font-size: 11px; color: #a99; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="device">
+  <header>
+    <span class="title" id="book-title">Loading…</span>
+    <span id="page-indicator"></span>
+  </header>
+
+  <div class="page-area">
+    <div class="chapter-heading" id="chapter-heading"></div>
+    <div class="char-badges" id="char-badges"></div>
+    <div id="page-text">Loading book…</div>
+    <div class="emotion-display" id="emotion-display">
+      <span class="emotion-message" id="emotion-message"></span>
+      <span class="emotion-meta" id="emotion-meta"></span>
+    </div>
+  </div>
+
+  <div class="sentiment-strip">
+    <div class="label">Emotions so far</div>
+    <canvas id="sentiment-canvas" width="600" height="44"></canvas>
+  </div>
+
+  <footer>
+    <div class="footer-left">
+      <span id="model-info"></span>
+    </div>
+    <span class="nav-buttons">
+      <button id="prev-btn">&larr; Prev</button>
+      <button id="next-btn">Next &rarr;</button>
+    </span>
+  </footer>
+</div>
+
+<script>
+let book = null;
+let current = 0; // index into pages array
+
+const EMOTION_COLORS = {
+  joy: "#ffd166",
+  love: "#ff8fab",
+  surprise: "#ffb347",
+  anger: "#ef5350",
+  fear: "#9575cd",
+  sadness: "#64b5f6",
+  disgust: "#8bc34a",
+  embarrassment: "#f48fb1",
+  curiosity: "#4dd0e1",
+};
+
+async function loadBook() {
+  const res = await fetch("pages.json");
+  book = await res.json();
+  document.getElementById("book-title").textContent = `${book.title} — ${book.author}`;
+  const modelName = book.emotion_model_name || "Keras Bi-LSTM emotion model";
+  document.getElementById("model-info").textContent =
+    `${modelName} (${book.emotion_labels.length} classes, ${Math.round(book.emotion_model_test_accuracy * 100)}% test acc.)`;
+  renderPage(0);
+}
+
+function moodClass(name) {
+  const stats = book.characters[name];
+  if (!stats) return "mood-neutral";
+  if (stats.avg_valence >= 0.05) return "mood-positive";
+  if (stats.avg_valence <= -0.05) return "mood-negative";
+  return "mood-neutral";
+}
+
+function renderPage(idx) {
+  const page = book.pages[idx];
+  document.getElementById("chapter-heading").textContent = page.chapter;
+  document.getElementById("page-text").textContent = page.text;
+  document.getElementById("page-indicator").textContent = `Page ${page.page_number} / ${book.pages.length}`;
+  document.getElementById("prev-btn").disabled = idx === 0;
+  document.getElementById("next-btn").disabled = idx === book.pages.length - 1;
+
+  const badgeContainer = document.getElementById("char-badges");
+  badgeContainer.innerHTML = "";
+  (page.characters || []).forEach((name) => {
+    const span = document.createElement("span");
+    span.className = "char-badge " + moodClass(name);
+    span.textContent = name;
+    badgeContainer.appendChild(span);
+  });
+
+  renderEmotion(page);
+  drawSentimentStrip(idx);
+}
+
+function renderEmotion(page) {
+  const el = document.getElementById("emotion-display");
+  el.className = "emotion-display " + page.emotion_label;
+  document.getElementById("emotion-message").textContent = page.popup_message;
+  document.getElementById("emotion-meta").textContent =
+    `${page.emotion_label} · confidence ${page.emotion_confidence.toFixed(2)}`;
+}
+
+document.getElementById("next-btn").addEventListener("click", () => {
+  if (current < book.pages.length - 1) {
+    current += 1;
+    renderPage(current);
+  }
+});
+
+document.getElementById("prev-btn").addEventListener("click", () => {
+  if (current > 0) {
+    current -= 1;
+    renderPage(current);
+  }
+});
+
+function drawSentimentStrip(uptoIdx) {
+  const canvas = document.getElementById("sentiment-canvas");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const n = book.pages.length;
+  const barWidth = w / n;
+
+  for (let i = 0; i < n; i++) {
+    const x = i * barWidth;
+    const read = i <= uptoIdx;
+    ctx.fillStyle = read
+      ? (EMOTION_COLORS[book.pages[i].emotion_label] || "#d8cfb8")
+      : "#ece6d6";
+    ctx.fillRect(x, 0, Math.ceil(barWidth) + 0.5, h);
+  }
+
+  // marker triangle above the current page
+  const markerX = (uptoIdx + 0.5) * barWidth;
+  ctx.beginPath();
+  ctx.moveTo(markerX - 4, 0);
+  ctx.lineTo(markerX + 4, 0);
+  ctx.lineTo(markerX, 6);
+  ctx.closePath();
+  ctx.fillStyle = "#2b2620";
+  ctx.fill();
+}
+
+loadBook();
+</script>
+
+</body>
+</html>
